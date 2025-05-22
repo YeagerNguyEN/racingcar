@@ -2,57 +2,75 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Car Racing Improved</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Neon Racer</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap"
+      rel="stylesheet"
+    />
     <style>
       body {
         margin: 0;
-        background: linear-gradient(#222, #000);
+        background: linear-gradient(to bottom, #1a1a1a, #000000);
         display: flex;
+        flex-direction: column;
         justify-content: center;
         align-items: center;
-        height: 100vh;
+        min-height: 100vh;
         overflow: hidden;
         font-family: "Orbitron", sans-serif;
+        color: #0ff;
       }
       canvas {
         border-radius: 15px;
-        box-shadow: 0 0 30px #0f0;
-        background: #111;
+        box-shadow: 0 0 40px rgba(0, 255, 255, 0.7);
+        background: #050505;
+        touch-action: none; /* Rất quan trọng để ngăn trình duyệt xử lý các cử chỉ chạm mặc định */
       }
       #score {
         position: absolute;
         top: 20px;
         left: 20px;
-        color: #0f0;
+        color: #0ff;
         font-size: 28px;
         font-weight: 700;
-        text-shadow: 0 0 8px #0f0;
+        text-shadow: 0 0 10px #0ff, 0 0 20px rgba(0, 255, 255, 0.5);
+        z-index: 10;
       }
       #gameOverScreen {
         position: absolute;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        color: #0f0;
+        color: #0ff;
         font-size: 42px;
         font-weight: 900;
         text-align: center;
         display: none;
         user-select: none;
+        z-index: 20;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 30px;
+        border-radius: 20px;
+        box-shadow: 0 0 30px rgba(0, 255, 255, 0.8);
       }
       #restartBtn {
-        margin-top: 20px;
-        padding: 12px 30px;
-        font-size: 20px;
-        background: #0f0;
+        margin-top: 25px;
+        padding: 15px 40px;
+        font-size: 24px;
+        background: #0ff;
+        color: #000;
         border: none;
-        border-radius: 12px;
+        border-radius: 15px;
         cursor: pointer;
-        box-shadow: 0 0 15px #0f0aa;
-        transition: background 0.3s ease;
+        box-shadow: 0 0 20px rgba(0, 255, 255, 0.6);
+        transition: background 0.3s ease, box-shadow 0.3s ease;
+        font-family: "Orbitron", sans-serif;
+        font-weight: 700;
       }
       #restartBtn:hover {
-        background: #0c0;
+        background: #0af;
+        box-shadow: 0 0 25px rgba(0, 255, 255, 0.8);
       }
     </style>
   </head>
@@ -65,249 +83,287 @@
     <canvas id="gameCanvas" width="400" height="700"></canvas>
 
     <script>
+      // --- Game Constants and DOM Elements ---
       const canvas = document.getElementById("gameCanvas");
       const ctx = canvas.getContext("2d");
       const scoreDiv = document.getElementById("score");
       const gameOverScreen = document.getElementById("gameOverScreen");
       const restartBtn = document.getElementById("restartBtn");
 
-      const laneCount = 3;
-      const laneWidth = canvas.width / laneCount;
-      const laneX = [laneWidth * 0.5, laneWidth * 1.5, laneWidth * 2.5];
+      const LANE_COUNT = 3;
+      const LANE_WIDTH = canvas.width / LANE_COUNT;
+      const LANE_CENTERS = Array.from(
+        { length: LANE_COUNT },
+        (_, i) => LANE_WIDTH * (i + 0.5)
+      );
 
-      const roadLineHeight = 80;
-      const roadLineWidth = 10;
-      const roadLineSpacing = 160;
+      const ROAD_LINE_HEIGHT = 80;
+      const ROAD_LINE_WIDTH = 10;
+      const ROAD_LINE_SPACING = 160;
 
+      const PLAYER_WIDTH = 50;
+      const PLAYER_HEIGHT = 100;
+      const ENEMY_WIDTH = 50;
+      const ENEMY_HEIGHT = 100;
+
+      // --- Game State Variables ---
       let roadLines = [];
       let enemies = [];
       let score = 0;
-      let speed = 6;
+      let gameSpeed = 6;
       let gameRunning = false;
+      let animationFrameId = null;
 
       const player = {
-        width: 50,
-        height: 100,
-        x: laneX[1] - 25,
+        width: PLAYER_WIDTH,
+        height: PLAYER_HEIGHT,
+        x: LANE_CENTERS[1] - PLAYER_WIDTH / 2,
         y: canvas.height - 140,
         lane: 1,
-        speed: 8,
       };
 
+      // Chỉ sử dụng cho điều khiển bằng phím.
+      // Đối với điều khiển cảm ứng, chúng ta sẽ xử lý trực tiếp trong các sự kiện touch.
       const keys = { ArrowLeft: false, ArrowRight: false };
 
-      // Initialize road lines
+      // --- Helper Functions for Drawing ---
+
+      function drawCarShape(
+        ctx,
+        x,
+        y,
+        width,
+        height,
+        bodyColor,
+        windowColor,
+        shadowColor
+      ) {
+        ctx.save();
+        ctx.shadowColor = shadowColor;
+        ctx.shadowBlur = 15;
+
+        // Car body
+        ctx.fillStyle = bodyColor;
+        ctx.beginPath();
+        ctx.moveTo(x + width * 0.2, y);
+        ctx.lineTo(x + width * 0.8, y);
+        ctx.quadraticCurveTo(
+          x + width,
+          y + height * 0.2,
+          x + width,
+          y + height * 0.6
+        );
+        ctx.quadraticCurveTo(
+          x + width,
+          y + height * 0.9,
+          x + width * 0.8,
+          y + height
+        );
+        ctx.lineTo(x + width * 0.2, y + height);
+        ctx.quadraticCurveTo(x, y + height * 0.9, x, y + height * 0.6);
+        ctx.quadraticCurveTo(x, y + height * 0.2, x + width * 0.2, y);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.shadowBlur = 10;
+        // Windows
+        ctx.fillStyle = windowColor;
+        ctx.beginPath();
+        ctx.moveTo(x + width * 0.25, y + height * 0.1);
+        ctx.lineTo(x + width * 0.75, y + height * 0.1);
+        ctx.lineTo(x + width * 0.7, y + height * 0.45);
+        ctx.lineTo(x + width * 0.3, y + height * 0.45);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.shadowBlur = 5;
+        ctx.fillStyle = "#111";
+        // Wheels
+        ctx.beginPath();
+        ctx.arc(
+          x + width * 0.15,
+          y + height * 0.25,
+          width * 0.1,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(
+          x + width * 0.85,
+          y + height * 0.25,
+          width * 0.1,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(
+          x + width * 0.15,
+          y + height * 0.85,
+          width * 0.1,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(
+          x + width * 0.85,
+          y + height * 0.85,
+          width * 0.1,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      function drawPlayer() {
+        drawCarShape(
+          ctx,
+          player.x,
+          player.y,
+          player.width,
+          player.height,
+          "#ff0055", // Neon pink
+          "#88ffff",
+          "#ff0055"
+        );
+      }
+
+      function drawEnemy(enemy) {
+        drawCarShape(
+          ctx,
+          enemy.x,
+          enemy.y,
+          enemy.width,
+          enemy.height,
+          "#00aaff", // Neon blue
+          "#ffccff",
+          "#00aaff"
+        );
+      }
+
+      // --- Road and Environment ---
+
       function initRoadLines() {
         roadLines = [];
         for (
           let i = 0;
-          i < Math.ceil(canvas.height / roadLineSpacing) + 1;
+          i < Math.ceil(canvas.height / ROAD_LINE_SPACING) + 2;
           i++
         ) {
           roadLines.push({
-            x: canvas.width / 2 - roadLineWidth / 2,
-            y: i * roadLineSpacing,
+            x: canvas.width / 2 - ROAD_LINE_WIDTH / 2,
+            y: i * ROAD_LINE_SPACING - ROAD_LINE_HEIGHT,
           });
         }
       }
 
-      // Draw road lines
       function drawRoadLines() {
-        ctx.fillStyle = "#0f0";
+        ctx.fillStyle = "#0ff";
+        ctx.shadowColor = "#0ff";
+        ctx.shadowBlur = 8;
         roadLines.forEach((line) => {
-          ctx.fillRect(line.x, line.y, roadLineWidth, roadLineHeight);
+          ctx.fillRect(line.x, line.y, ROAD_LINE_WIDTH, ROAD_LINE_HEIGHT);
         });
+        ctx.shadowBlur = 0;
       }
 
-      // Move road lines
       function moveRoadLines() {
         roadLines.forEach((line) => {
-          line.y += speed;
+          line.y += gameSpeed;
           if (line.y > canvas.height) {
-            line.y = -roadLineHeight;
+            line.y -= roadLines.length * ROAD_LINE_SPACING;
           }
         });
       }
 
-      // Draw player car with details
-      function drawPlayer() {
-        const px = player.x;
-        const py = player.y;
-        ctx.save();
+      function drawRoad() {
+        // Dark background
+        ctx.fillStyle = "#0a0a0a";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Car body
-        ctx.fillStyle = "#f00";
-        ctx.shadowColor = "#f00";
-        ctx.shadowBlur = 15;
-        ctx.beginPath();
-        ctx.moveTo(px + 10, py);
-        ctx.lineTo(px + player.width - 10, py);
-        ctx.quadraticCurveTo(
-          px + player.width,
-          py + 20,
-          px + player.width,
-          py + 60
+        // Road surface
+        ctx.fillStyle = "#1c1c1c";
+        ctx.fillRect(
+          LANE_WIDTH * 0.05,
+          0,
+          LANE_WIDTH * LANE_COUNT * 0.9,
+          canvas.height
         );
-        ctx.quadraticCurveTo(
-          px + player.width,
-          py + 90,
-          px + player.width - 10,
-          py + 100
-        );
-        ctx.lineTo(px + 10, py + 100);
-        ctx.quadraticCurveTo(px, py + 90, px, py + 60);
-        ctx.quadraticCurveTo(px, py + 20, px + 10, py);
-        ctx.fill();
 
-        // Windows
-        ctx.fillStyle = "#aaf";
+        // Neon side stripes
+        ctx.fillStyle = "#0ff";
+        ctx.shadowColor = "#0ff";
         ctx.shadowBlur = 10;
-        ctx.beginPath();
-        ctx.moveTo(px + 12, py + 10);
-        ctx.lineTo(px + player.width - 12, py + 10);
-        ctx.lineTo(px + player.width - 20, py + 50);
-        ctx.lineTo(px + 20, py + 50);
-        ctx.closePath();
-        ctx.fill();
+        ctx.fillRect(LANE_WIDTH * 0.05 - 5, 0, 5, canvas.height);
+        ctx.fillRect(LANE_WIDTH * LANE_COUNT * 0.9, 0, 5, canvas.height);
+        ctx.shadowBlur = 0;
 
-        // Wheels
-        ctx.fillStyle = "#222";
-        ctx.shadowBlur = 5;
-        // Left front wheel
-        ctx.beginPath();
-        ctx.ellipse(px + 12, py + 20, 10, 14, 0, 0, Math.PI * 2);
-        ctx.fill();
-        // Right front wheel
-        ctx.beginPath();
-        ctx.ellipse(px + player.width - 12, py + 20, 10, 14, 0, 0, Math.PI * 2);
-        ctx.fill();
-        // Left rear wheel
-        ctx.beginPath();
-        ctx.ellipse(px + 12, py + 90, 10, 14, 0, 0, Math.PI * 2);
-        ctx.fill();
-        // Right rear wheel
-        ctx.beginPath();
-        ctx.ellipse(px + player.width - 12, py + 90, 10, 14, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.restore();
+        // Simple background buildings/horizon
+        ctx.fillStyle = "#2a2a2a";
+        ctx.fillRect(0, canvas.height - 100, canvas.width, 100);
+        ctx.fillStyle = "#1a1a1a";
+        for (let i = 0; i < 10; i++) {
+          ctx.fillRect(
+            Math.random() * canvas.width,
+            canvas.height - 100 - Math.random() * 80,
+            20 + Math.random() * 30,
+            20 + Math.random() * 80
+          );
+        }
       }
 
-      // Draw enemy cars with details
-      function drawEnemy(enemy) {
-        const ex = enemy.x;
-        const ey = enemy.y;
-        ctx.save();
+      // --- Enemy Management ---
 
-        // Car body
-        ctx.fillStyle = "#00f";
-        ctx.shadowColor = "#00f";
-        ctx.shadowBlur = 15;
-        ctx.beginPath();
-        ctx.moveTo(ex + 10, ey);
-        ctx.lineTo(ex + enemy.width - 10, ey);
-        ctx.quadraticCurveTo(
-          ex + enemy.width,
-          ey + 20,
-          ex + enemy.width,
-          ey + 60
-        );
-        ctx.quadraticCurveTo(
-          ex + enemy.width,
-          ey + 90,
-          ex + enemy.width - 10,
-          ey + 100
-        );
-        ctx.lineTo(ex + 10, ey + 100);
-        ctx.quadraticCurveTo(ex, ey + 90, ex, ey + 60);
-        ctx.quadraticCurveTo(ex, ey + 20, ex + 10, ey);
-        ctx.fill();
-
-        // Windows
-        ctx.fillStyle = "#aaf";
-        ctx.shadowBlur = 10;
-        ctx.beginPath();
-        ctx.moveTo(ex + 12, ey + 10);
-        ctx.lineTo(ex + enemy.width - 12, ey + 10);
-        ctx.lineTo(ex + enemy.width - 20, ey + 50);
-        ctx.lineTo(ex + 20, ey + 50);
-        ctx.closePath();
-        ctx.fill();
-
-        // Wheels
-        ctx.fillStyle = "#222";
-        ctx.shadowBlur = 5;
-        // Left front wheel
-        ctx.beginPath();
-        ctx.ellipse(ex + 12, ey + 20, 10, 14, 0, 0, Math.PI * 2);
-        ctx.fill();
-        // Right front wheel
-        ctx.beginPath();
-        ctx.ellipse(ex + enemy.width - 12, ey + 20, 10, 14, 0, 0, Math.PI * 2);
-        ctx.fill();
-        // Left rear wheel
-        ctx.beginPath();
-        ctx.ellipse(ex + 12, ey + 90, 10, 14, 0, 0, Math.PI * 2);
-        ctx.fill();
-        // Right rear wheel
-        ctx.beginPath();
-        ctx.ellipse(ex + enemy.width - 12, ey + 90, 10, 14, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.restore();
-      }
-
-      // Create enemies ensuring no overlap at spawn
       function createEnemies(count) {
         enemies = [];
         for (let i = 0; i < count; i++) {
           let lane;
           let yPos;
-          let tries = 0;
+          let minDistance = ENEMY_HEIGHT * 1.8;
+          let maxTries = 50;
 
           do {
-            lane = Math.floor(Math.random() * laneCount);
-            yPos = -Math.random() * 3000 - 100;
-            tries++;
+            lane = Math.floor(Math.random() * LANE_COUNT);
+            yPos = -(Math.random() * (canvas.height * 1.5)) - ENEMY_HEIGHT;
+            maxTries--;
           } while (
+            maxTries > 0 &&
             enemies.some(
-              (e) => e.lane === lane && Math.abs(e.y - yPos) < 250
-            ) &&
-            tries < 20
+              (e) => e.lane === lane && Math.abs(e.y - yPos) < minDistance
+            )
           );
 
           enemies.push({
             lane: lane,
-            width: 50,
-            height: 100,
-            x: laneX[lane] - 25,
+            width: ENEMY_WIDTH,
+            height: ENEMY_HEIGHT,
+            x: LANE_CENTERS[lane] - ENEMY_WIDTH / 2,
             y: yPos,
           });
         }
       }
 
-      // Draw all enemies
-      function drawEnemies() {
-        enemies.forEach((enemy) => {
-          drawEnemy(enemy);
-        });
-      }
-
-      // Move enemies and reset if out of screen
       function moveEnemies() {
         enemies.forEach((enemy) => {
-          enemy.y += speed;
+          enemy.y += gameSpeed;
           if (enemy.y > canvas.height + enemy.height) {
-            enemy.lane = Math.floor(Math.random() * laneCount);
-            enemy.x = laneX[enemy.lane] - 25;
-            enemy.y = -Math.random() * 800 - enemy.height;
+            enemy.lane = Math.floor(Math.random() * LANE_COUNT);
+            enemy.x = LANE_CENTERS[enemy.lane] - ENEMY_WIDTH / 2;
+            enemy.y = -(Math.random() * canvas.height) - ENEMY_HEIGHT;
             score++;
-            speed += 0.01; // gradually increase speed for difficulty
+            gameSpeed += 0.01;
           }
         });
       }
 
-      // Detect collision between player and enemies
+      function drawEnemies() {
+        enemies.forEach(drawEnemy);
+      }
+
       function checkCollision() {
         for (let enemy of enemies) {
           if (
@@ -321,49 +377,61 @@
         return false;
       }
 
-      // Update player lane based on key press
-      function handleKeys() {
-        if (keys.ArrowLeft && player.lane > 0) {
+      // --- Input Handling (Unified) ---
+
+      // Hàm chung để chuyển làn xe
+      function changePlayerLane(direction) {
+        if (direction === "left" && player.lane > 0) {
           player.lane--;
-          player.x = laneX[player.lane] - 25;
-          keys.ArrowLeft = false; // prevent continuous move
-        }
-        if (keys.ArrowRight && player.lane < laneCount - 1) {
+          player.x = LANE_CENTERS[player.lane] - PLAYER_WIDTH / 2;
+        } else if (direction === "right" && player.lane < LANE_COUNT - 1) {
           player.lane++;
-          player.x = laneX[player.lane] - 25;
-          keys.ArrowRight = false;
+          player.x = LANE_CENTERS[player.lane] - PLAYER_WIDTH / 2;
         }
       }
 
-      // Clear canvas
+      // Xử lý sự kiện bàn phím (cho PC)
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowLeft") {
+          changePlayerLane("left");
+        } else if (e.key === "ArrowRight") {
+          changePlayerLane("right");
+        }
+      });
+
+      // Xử lý sự kiện chạm/vuốt (cho Android/thiết bị cảm ứng)
+      let touchStartX = 0;
+      const SWIPE_THRESHOLD = 30; // Ngưỡng vuốt tối thiểu
+
+      canvas.addEventListener("touchstart", (e) => {
+        e.preventDefault(); // Ngăn trình duyệt xử lý các cử chỉ mặc định
+        if (e.touches.length === 1) {
+          touchStartX = e.touches[0].screenX;
+        }
+      });
+
+      canvas.addEventListener("touchend", (e) => {
+        if (e.changedTouches.length === 1) {
+          const touchEndX = e.changedTouches[0].screenX;
+          if (touchEndX < touchStartX - SWIPE_THRESHOLD) {
+            changePlayerLane("left"); // Vuốt sang trái
+          } else if (touchEndX > touchStartX + SWIPE_THRESHOLD) {
+            changePlayerLane("right"); // Vuốt sang phải
+          }
+        }
+      });
+
+      // --- Game Loop and Control ---
+
       function clearCanvas() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
 
-      // Draw the road background
-      function drawRoad() {
-        // Grass
-        ctx.fillStyle = "#004400";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        // Road
-        ctx.fillStyle = "#222";
-        ctx.fillRect(
-          laneWidth * 0.1,
-          0,
-          laneWidth * laneCount * 0.8,
-          canvas.height
-        );
-
-        // Side stripes
-        ctx.fillStyle = "#0f0";
-        ctx.fillRect(laneWidth * 0.1 - 5, 0, 5, canvas.height);
-        ctx.fillRect(laneWidth * laneCount * 0.9, 0, 5, canvas.height);
-      }
-
-      // Main game loop
       function gameLoop() {
-        if (!gameRunning) return;
+        if (!gameRunning) {
+          cancelAnimationFrame(animationFrameId);
+          return;
+        }
 
         clearCanvas();
         drawRoad();
@@ -371,7 +439,7 @@
         drawRoadLines();
         moveEnemies();
         drawEnemies();
-        handleKeys();
+        // handleKeys(); // Không cần gọi riêng handleKeys nữa vì đã tích hợp vào keydown event listener
         drawPlayer();
 
         scoreDiv.textContent = "Score: " + score;
@@ -381,122 +449,36 @@
           return;
         }
 
-        requestAnimationFrame(gameLoop);
+        animationFrameId = requestAnimationFrame(gameLoop);
       }
 
-      // Start game function
       function startGame() {
         score = 0;
-        speed = 6;
+        gameSpeed = 6;
         player.lane = 1;
-        player.x = laneX[player.lane] - 25;
+        player.x = LANE_CENTERS[player.lane] - PLAYER_WIDTH / 2;
         initRoadLines();
         createEnemies(5);
         gameOverScreen.style.display = "none";
         scoreDiv.style.display = "block";
         gameRunning = true;
-        gameLoop();
+        animationFrameId = requestAnimationFrame(gameLoop);
       }
 
-      // End game function
       function endGame() {
         gameRunning = false;
+        cancelAnimationFrame(animationFrameId);
         gameOverScreen.style.display = "block";
         scoreDiv.style.display = "none";
       }
 
-      // Keyboard events
-      window.addEventListener("keydown", (e) => {
-        if (e.key === "ArrowLeft") {
-          keys.ArrowLeft = true;
-        }
-        if (e.key === "ArrowRight") {
-          keys.ArrowRight = true;
-        }
-      });
+      // --- Event Listeners ---
 
-      // Touch control variables for swipe
-      let touchStartX = 0;
-      let touchEndX = 0;
-
-      canvas.addEventListener("touchstart", (e) => {
-        touchStartX = e.changedTouches[0].screenX;
-      });
-
-      canvas.addEventListener("touchend", (e) => {
-        touchEndX = e.changedTouches[0].screenX;
-        handleGesture();
-      });
-
-      function handleGesture() {
-        if (touchEndX < touchStartX - 30) {
-          // Swipe left
-          if (player.lane > 0) {
-            player.lane--;
-            player.x = laneX[player.lane] - 25;
-          }
-        }
-        if (touchEndX > touchStartX + 30) {
-          // Swipe right
-          if (player.lane < laneCount - 1) {
-            player.lane++;
-            player.x = laneX[player.lane] - 25;
-          }
-        }
-      }
-
-      // Add buttons for Android / touchscreen users
-      const controlsDiv = document.createElement("div");
-      controlsDiv.style.position = "fixed";
-      controlsDiv.style.bottom = "20px";
-      controlsDiv.style.width = "100%";
-      controlsDiv.style.display = "flex";
-      controlsDiv.style.justifyContent = "center";
-      controlsDiv.style.gap = "40px";
-      document.body.appendChild(controlsDiv);
-
-      const btnLeft = document.createElement("button");
-      btnLeft.textContent = "Left";
-      btnLeft.style.padding = "15px 30px";
-      btnLeft.style.fontSize = "20px";
-      btnLeft.style.borderRadius = "10px";
-      btnLeft.style.background = "#0f0";
-      btnLeft.style.border = "none";
-      btnLeft.style.cursor = "pointer";
-      btnLeft.style.userSelect = "none";
-      controlsDiv.appendChild(btnLeft);
-
-      const btnRight = document.createElement("button");
-      btnRight.textContent = "Right";
-      btnRight.style.padding = "15px 30px";
-      btnRight.style.fontSize = "20px";
-      btnRight.style.borderRadius = "10px";
-      btnRight.style.background = "#0f0";
-      btnRight.style.border = "none";
-      btnRight.style.cursor = "pointer";
-      btnRight.style.userSelect = "none";
-      controlsDiv.appendChild(btnRight);
-
-      btnLeft.addEventListener("click", () => {
-        if (player.lane > 0) {
-          player.lane--;
-          player.x = laneX[player.lane] - 25;
-        }
-      });
-
-      btnRight.addEventListener("click", () => {
-        if (player.lane < laneCount - 1) {
-          player.lane++;
-          player.x = laneX[player.lane] - 25;
-        }
-      });
-
-      // Restart button click event
       restartBtn.addEventListener("click", () => {
         startGame();
       });
 
-      // Start game on load
+      // Initial game start
       startGame();
     </script>
   </body>
