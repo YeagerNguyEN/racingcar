@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Car Racing Improved</title>
+    <style>
+      body {
+        margin: 0;
+        background: linear-gradient(#222, #000);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        overflow: hidden;
+        font-family: "Orbitron", sans-serif;
+      }
+      canvas {
+        border-radius: 15px;
+        box-shadow: 0 0 30px #0f0;
+        background: #111;
+      }
+      #score {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        color: #0f0;
+        font-size: 28px;
+        font-weight: 700;
+        text-shadow: 0 0 8px #0f0;
+      }
+      #gameOverScreen {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: #0f0;
+        font-size: 42px;
+        font-weight: 900;
+        text-align: center;
+        display: none;
+        user-select: none;
+      }
+      #restartBtn {
+        margin-top: 20px;
+        padding: 12px 30px;
+        font-size: 20px;
+        background: #0f0;
+        border: none;
+        border-radius: 12px;
+        cursor: pointer;
+        box-shadow: 0 0 15px #0f0aa;
+        transition: background 0.3s ease;
+      }
+      #restartBtn:hover {
+        background: #0c0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="score">Score: 0</div>
+    <div id="gameOverScreen">
+      GAME OVER<br />
+      <button id="restartBtn">Restart</button>
+    </div>
+    <canvas id="gameCanvas" width="400" height="700"></canvas>
+
+    <script>
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+      const scoreDiv = document.getElementById("score");
+      const gameOverScreen = document.getElementById("gameOverScreen");
+      const restartBtn = document.getElementById("restartBtn");
+
+      const laneCount = 3;
+      const laneWidth = canvas.width / laneCount;
+      const laneX = [laneWidth * 0.5, laneWidth * 1.5, laneWidth * 2.5];
+
+      const roadLineHeight = 80;
+      const roadLineWidth = 10;
+      const roadLineSpacing = 160;
+
+      let roadLines = [];
+      let enemies = [];
+      let score = 0;
+      let speed = 6;
+      let gameRunning = false;
+
+      const player = {
+        width: 50,
+        height: 100,
+        x: laneX[1] - 25,
+        y: canvas.height - 140,
+        lane: 1,
+        speed: 8,
+      };
+
+      const keys = { ArrowLeft: false, ArrowRight: false };
+
+      // Initialize road lines
+      function initRoadLines() {
+        roadLines = [];
+        for (
+          let i = 0;
+          i < Math.ceil(canvas.height / roadLineSpacing) + 1;
+          i++
+        ) {
+          roadLines.push({
+            x: canvas.width / 2 - roadLineWidth / 2,
+            y: i * roadLineSpacing,
+          });
+        }
+      }
+
+      // Draw road lines
+      function drawRoadLines() {
+        ctx.fillStyle = "#0f0";
+        roadLines.forEach((line) => {
+          ctx.fillRect(line.x, line.y, roadLineWidth, roadLineHeight);
+        });
+      }
+
+      // Move road lines
+      function moveRoadLines() {
+        roadLines.forEach((line) => {
+          line.y += speed;
+          if (line.y > canvas.height) {
+            line.y = -roadLineHeight;
+          }
+        });
+      }
+
+      // Draw player car with details
+      function drawPlayer() {
+        const px = player.x;
+        const py = player.y;
+        ctx.save();
+
+        // Car body
+        ctx.fillStyle = "#f00";
+        ctx.shadowColor = "#f00";
+        ctx.shadowBlur = 15;
+        ctx.beginPath();
+        ctx.moveTo(px + 10, py);
+        ctx.lineTo(px + player.width - 10, py);
+        ctx.quadraticCurveTo(
+          px + player.width,
+          py + 20,
+          px + player.width,
+          py + 60
+        );
+        ctx.quadraticCurveTo(
+          px + player.width,
+          py + 90,
+          px + player.width - 10,
+          py + 100
+        );
+        ctx.lineTo(px + 10, py + 100);
+        ctx.quadraticCurveTo(px, py + 90, px, py + 60);
+        ctx.quadraticCurveTo(px, py + 20, px + 10, py);
+        ctx.fill();
+
+        // Windows
+        ctx.fillStyle = "#aaf";
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.moveTo(px + 12, py + 10);
+        ctx.lineTo(px + player.width - 12, py + 10);
+        ctx.lineTo(px + player.width - 20, py + 50);
+        ctx.lineTo(px + 20, py + 50);
+        ctx.closePath();
+        ctx.fill();
+
+        // Wheels
+        ctx.fillStyle = "#222";
+        ctx.shadowBlur = 5;
+        // Left front wheel
+        ctx.beginPath();
+        ctx.ellipse(px + 12, py + 20, 10, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Right front wheel
+        ctx.beginPath();
+        ctx.ellipse(px + player.width - 12, py + 20, 10, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Left rear wheel
+        ctx.beginPath();
+        ctx.ellipse(px + 12, py + 90, 10, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Right rear wheel
+        ctx.beginPath();
+        ctx.ellipse(px + player.width - 12, py + 90, 10, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      // Draw enemy cars with details
+      function drawEnemy(enemy) {
+        const ex = enemy.x;
+        const ey = enemy.y;
+        ctx.save();
+
+        // Car body
+        ctx.fillStyle = "#00f";
+        ctx.shadowColor = "#00f";
+        ctx.shadowBlur = 15;
+        ctx.beginPath();
+        ctx.moveTo(ex + 10, ey);
+        ctx.lineTo(ex + enemy.width - 10, ey);
+        ctx.quadraticCurveTo(
+          ex + enemy.width,
+          ey + 20,
+          ex + enemy.width,
+          ey + 60
+        );
+        ctx.quadraticCurveTo(
+          ex + enemy.width,
+          ey + 90,
+          ex + enemy.width - 10,
+          ey + 100
+        );
+        ctx.lineTo(ex + 10, ey + 100);
+        ctx.quadraticCurveTo(ex, ey + 90, ex, ey + 60);
+        ctx.quadraticCurveTo(ex, ey + 20, ex + 10, ey);
+        ctx.fill();
+
+        // Windows
+        ctx.fillStyle = "#aaf";
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.moveTo(ex + 12, ey + 10);
+        ctx.lineTo(ex + enemy.width - 12, ey + 10);
+        ctx.lineTo(ex + enemy.width - 20, ey + 50);
+        ctx.lineTo(ex + 20, ey + 50);
+        ctx.closePath();
+        ctx.fill();
+
+        // Wheels
+        ctx.fillStyle = "#222";
+        ctx.shadowBlur = 5;
+        // Left front wheel
+        ctx.beginPath();
+        ctx.ellipse(ex + 12, ey + 20, 10, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Right front wheel
+        ctx.beginPath();
+        ctx.ellipse(ex + enemy.width - 12, ey + 20, 10, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Left rear wheel
+        ctx.beginPath();
+        ctx.ellipse(ex + 12, ey + 90, 10, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Right rear wheel
+        ctx.beginPath();
+        ctx.ellipse(ex + enemy.width - 12, ey + 90, 10, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      // Create enemies ensuring no overlap at spawn
+      function createEnemies(count) {
+        enemies = [];
+        for (let i = 0; i < count; i++) {
+          let lane;
+          let yPos;
+          let tries = 0;
+
+          do {
+            lane = Math.floor(Math.random() * laneCount);
+            yPos = -Math.random() * 3000 - 100;
+            tries++;
+          } while (
+            enemies.some(
+              (e) => e.lane === lane && Math.abs(e.y - yPos) < 250
+            ) &&
+            tries < 20
+          );
+
+          enemies.push({
+            lane: lane,
+            width: 50,
+            height: 100,
+            x: laneX[lane] - 25,
+            y: yPos,
+          });
+        }
+      }
+
+      // Draw all enemies
+      function drawEnemies() {
+        enemies.forEach((enemy) => {
+          drawEnemy(enemy);
+        });
+      }
+
+      // Move enemies and reset if out of screen
+      function moveEnemies() {
+        enemies.forEach((enemy) => {
+          enemy.y += speed;
+          if (enemy.y > canvas.height + enemy.height) {
+            enemy.lane = Math.floor(Math.random() * laneCount);
+            enemy.x = laneX[enemy.lane] - 25;
+            enemy.y = -Math.random() * 800 - enemy.height;
+            score++;
+            speed += 0.01; // gradually increase speed for difficulty
+          }
+        });
+      }
+
+      // Detect collision between player and enemies
+      function checkCollision() {
+        for (let enemy of enemies) {
+          if (
+            player.lane === enemy.lane &&
+            enemy.y + enemy.height > player.y + 10 &&
+            enemy.y < player.y + player.height - 10
+          ) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      // Update player lane based on key press
+      function handleKeys() {
+        if (keys.ArrowLeft && player.lane > 0) {
+          player.lane--;
+          player.x = laneX[player.lane] - 25;
+          keys.ArrowLeft = false; // prevent continuous move
+        }
+        if (keys.ArrowRight && player.lane < laneCount - 1) {
+          player.lane++;
+          player.x = laneX[player.lane] - 25;
+          keys.ArrowRight = false;
+        }
+      }
+
+      // Clear canvas
+      function clearCanvas() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+
+      // Draw the road background
+      function drawRoad() {
+        // Grass
+        ctx.fillStyle = "#004400";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Road
+        ctx.fillStyle = "#222";
+        ctx.fillRect(
+          laneWidth * 0.1,
+          0,
+          laneWidth * laneCount * 0.8,
+          canvas.height
+        );
+
+        // Side stripes
+        ctx.fillStyle = "#0f0";
+        ctx.fillRect(laneWidth * 0.1 - 5, 0, 5, canvas.height);
+        ctx.fillRect(laneWidth * laneCount * 0.9, 0, 5, canvas.height);
+      }
+
+      // Main game loop
+      function gameLoop() {
+        if (!gameRunning) return;
+
+        clearCanvas();
+        drawRoad();
+        moveRoadLines();
+        drawRoadLines();
+        moveEnemies();
+        drawEnemies();
+        handleKeys();
+        drawPlayer();
+
+        scoreDiv.textContent = "Score: " + score;
+
+        if (checkCollision()) {
+          endGame();
+          return;
+        }
+
+        requestAnimationFrame(gameLoop);
+      }
+
+      // Start game function
+      function startGame() {
+        score = 0;
+        speed = 6;
+        player.lane = 1;
+        player.x = laneX[player.lane] - 25;
+        initRoadLines();
+        createEnemies(5);
+        gameOverScreen.style.display = "none";
+        scoreDiv.style.display = "block";
+        gameRunning = true;
+        gameLoop();
+      }
+
+      // End game function
+      function endGame() {
+        gameRunning = false;
+        gameOverScreen.style.display = "block";
+        scoreDiv.style.display = "none";
+      }
+
+      // Keyboard events
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowLeft") {
+          keys.ArrowLeft = true;
+        }
+        if (e.key === "ArrowRight") {
+          keys.ArrowRight = true;
+        }
+      });
+
+      // Touch control variables for swipe
+      let touchStartX = 0;
+      let touchEndX = 0;
+
+      canvas.addEventListener("touchstart", (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+      });
+
+      canvas.addEventListener("touchend", (e) => {
+        touchEndX = e.changedTouches[0].screenX;
+        handleGesture();
+      });
+
+      function handleGesture() {
+        if (touchEndX < touchStartX - 30) {
+          // Swipe left
+          if (player.lane > 0) {
+            player.lane--;
+            player.x = laneX[player.lane] - 25;
+          }
+        }
+        if (touchEndX > touchStartX + 30) {
+          // Swipe right
+          if (player.lane < laneCount - 1) {
+            player.lane++;
+            player.x = laneX[player.lane] - 25;
+          }
+        }
+      }
+
+      // Add buttons for Android / touchscreen users
+      const controlsDiv = document.createElement("div");
+      controlsDiv.style.position = "fixed";
+      controlsDiv.style.bottom = "20px";
+      controlsDiv.style.width = "100%";
+      controlsDiv.style.display = "flex";
+      controlsDiv.style.justifyContent = "center";
+      controlsDiv.style.gap = "40px";
+      document.body.appendChild(controlsDiv);
+
+      const btnLeft = document.createElement("button");
+      btnLeft.textContent = "Left";
+      btnLeft.style.padding = "15px 30px";
+      btnLeft.style.fontSize = "20px";
+      btnLeft.style.borderRadius = "10px";
+      btnLeft.style.background = "#0f0";
+      btnLeft.style.border = "none";
+      btnLeft.style.cursor = "pointer";
+      btnLeft.style.userSelect = "none";
+      controlsDiv.appendChild(btnLeft);
+
+      const btnRight = document.createElement("button");
+      btnRight.textContent = "Right";
+      btnRight.style.padding = "15px 30px";
+      btnRight.style.fontSize = "20px";
+      btnRight.style.borderRadius = "10px";
+      btnRight.style.background = "#0f0";
+      btnRight.style.border = "none";
+      btnRight.style.cursor = "pointer";
+      btnRight.style.userSelect = "none";
+      controlsDiv.appendChild(btnRight);
+
+      btnLeft.addEventListener("click", () => {
+        if (player.lane > 0) {
+          player.lane--;
+          player.x = laneX[player.lane] - 25;
+        }
+      });
+
+      btnRight.addEventListener("click", () => {
+        if (player.lane < laneCount - 1) {
+          player.lane++;
+          player.x = laneX[player.lane] - 25;
+        }
+      });
+
+      // Restart button click event
+      restartBtn.addEventListener("click", () => {
+        startGame();
+      });
+
+      // Start game on load
+      startGame();
+    </script>
+  </body>
+</html>
