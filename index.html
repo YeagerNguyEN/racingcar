@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
     <title>Neon Racer</title>
     <link
       href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap"
@@ -25,7 +28,7 @@
         border-radius: 15px;
         box-shadow: 0 0 40px rgba(0, 255, 255, 0.7);
         background: #050505;
-        touch-action: none;
+        touch-action: none; /* Crucial for preventing default browser touch actions like scrolling */
       }
       #score {
         position: absolute;
@@ -43,21 +46,23 @@
         left: 50%;
         transform: translate(-50%, -50%);
         color: #0ff;
-        font-size: 42px;
+        font-size: 36px; /* Adjusted for better fit */
         font-weight: 900;
         text-align: center;
         display: none;
         user-select: none;
         z-index: 20;
-        background: rgba(0, 0, 0, 0.7);
+        background: rgba(0, 0, 0, 0.75);
         padding: 30px;
         border-radius: 20px;
         box-shadow: 0 0 30px rgba(0, 255, 255, 0.8);
+        width: 80%; /* Ensure it fits on smaller screens */
+        max-width: 350px;
       }
       #restartBtn {
         margin-top: 25px;
-        padding: 15px 40px;
-        font-size: 24px;
+        padding: 15px 30px; /* Adjusted padding */
+        font-size: 20px; /* Adjusted font size */
         background: #0ff;
         color: #000;
         border: none;
@@ -68,7 +73,9 @@
         font-family: "Orbitron", sans-serif;
         font-weight: 700;
       }
-      #restartBtn:hover {
+      #restartBtn:hover,
+      #restartBtn:active {
+        /* Added :active for touch feedback */
         background: #0af;
         box-shadow: 0 0 25px rgba(0, 255, 255, 0.8);
       }
@@ -106,29 +113,30 @@
       const ENEMY_WIDTH = 50;
       const ENEMY_HEIGHT = 100;
 
-      // Khoảng cách tối thiểu giữa các "hàng" kẻ thù
-      const ENEMY_SPAWN_GAP = ENEMY_HEIGHT * 1.8;
+      const ENEMY_SPAWN_GAP = ENEMY_HEIGHT * 2.0;
+
+      // --- Game Speed Constants ---
+      const INITIAL_GAME_SPEED = 6;
+      const MAX_GAME_SPEED = 15;
+      const SPEED_ACCELERATION = 0.00225; // TĂNG TỐC ĐỘ GIA TĂNG (0.0015 * 1.5)
 
       // --- Game State Variables ---
       let roadLines = [];
       let enemies = [];
       let score = 0;
-      let gameSpeed = 6;
+      let gameSpeed = INITIAL_GAME_SPEED;
       let gameRunning = false;
       let animationFrameId = null;
 
       const player = {
         width: PLAYER_WIDTH,
         height: PLAYER_HEIGHT,
-        x: LANE_CENTERS.at(1) - PLAYER_WIDTH / 2,
+        x: LANE_CENTERS[1] - PLAYER_WIDTH / 2,
         y: canvas.height - 140,
         lane: 1,
       };
 
-      const keys = { ArrowLeft: false, ArrowRight: false };
-
       // --- Helper Functions for Drawing ---
-
       function drawCarShape(
         ctx,
         x,
@@ -142,8 +150,6 @@
         ctx.save();
         ctx.shadowColor = shadowColor;
         ctx.shadowBlur = 15;
-
-        // Car body
         ctx.fillStyle = bodyColor;
         ctx.beginPath();
         ctx.moveTo(x + width * 0.2, y);
@@ -165,9 +171,7 @@
         ctx.quadraticCurveTo(x, y + height * 0.2, x + width * 0.2, y);
         ctx.closePath();
         ctx.fill();
-
         ctx.shadowBlur = 10;
-        // Windows
         ctx.fillStyle = windowColor;
         ctx.beginPath();
         ctx.moveTo(x + width * 0.25, y + height * 0.1);
@@ -176,47 +180,20 @@
         ctx.lineTo(x + width * 0.3, y + height * 0.45);
         ctx.closePath();
         ctx.fill();
-
         ctx.shadowBlur = 5;
         ctx.fillStyle = "#111";
-        // Wheels
-        ctx.beginPath();
-        ctx.arc(
-          x + width * 0.15,
-          y + height * 0.25,
+        ctx.fillRect(
+          x - width * 0.05,
+          y + height * 0.7,
           width * 0.1,
-          0,
-          Math.PI * 2
+          height * 0.2
         );
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(
-          x + width * 0.85,
-          y + height * 0.25,
+        ctx.fillRect(
+          x + width * 0.95,
+          y + height * 0.7,
           width * 0.1,
-          0,
-          Math.PI * 2
+          height * 0.2
         );
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(
-          x + width * 0.15,
-          y + height * 0.85,
-          width * 0.1,
-          0,
-          Math.PI * 2
-        );
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(
-          x + width * 0.85,
-          y + height * 0.85,
-          width * 0.1,
-          0,
-          Math.PI * 2
-        );
-        ctx.fill();
-
         ctx.restore();
       }
 
@@ -227,7 +204,7 @@
           player.y,
           player.width,
           player.height,
-          "#ff0055", // Neon pink
+          "#ff0055",
           "#88ffff",
           "#ff0055"
         );
@@ -240,14 +217,13 @@
           enemy.y,
           enemy.width,
           enemy.height,
-          "#00aaff", // Neon blue
+          "#00aaff",
           "#ffccff",
           "#00aaff"
         );
       }
 
       // --- Road and Environment ---
-
       function initRoadLines() {
         roadLines = [];
         for (
@@ -263,124 +239,99 @@
       }
 
       function drawRoadLines() {
+        ctx.save();
         ctx.fillStyle = "#0ff";
         ctx.shadowColor = "#0ff";
         ctx.shadowBlur = 8;
-        roadLines.forEach((line) => {
-          ctx.fillRect(line.x, line.y, ROAD_LINE_WIDTH, ROAD_LINE_HEIGHT);
-        });
-        ctx.shadowBlur = 0;
+        for (let i = 1; i < LANE_COUNT; i++) {
+          const lineX = LANE_WIDTH * i - ROAD_LINE_WIDTH / 2;
+          roadLines.forEach((line) => {
+            ctx.fillRect(lineX, line.y, ROAD_LINE_WIDTH, ROAD_LINE_HEIGHT);
+          });
+        }
+        ctx.restore();
       }
 
       function moveRoadLines() {
         roadLines.forEach((line) => {
           line.y += gameSpeed;
           if (line.y > canvas.height) {
-            line.y -= roadLines.length * ROAD_LINE_SPACING;
+            line.y -=
+              (Math.ceil(canvas.height / ROAD_LINE_SPACING) + 2) *
+              ROAD_LINE_SPACING;
           }
         });
       }
 
       function drawRoad() {
-        // Dark background
-        ctx.fillStyle = "#0a0a0a";
+        ctx.fillStyle = "#050505";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        // Road surface
         ctx.fillStyle = "#1c1c1c";
-        ctx.fillRect(
-          LANE_WIDTH * 0.05,
-          0,
-          LANE_WIDTH * LANE_COUNT * 0.9,
-          canvas.height
-        );
-
-        // Neon side stripes
-        ctx.fillStyle = "#0ff";
-        ctx.shadowColor = "#0ff";
-        ctx.shadowBlur = 10;
-        ctx.fillRect(LANE_WIDTH * 0.05 - 5, 0, 5, canvas.height);
-        ctx.fillRect(LANE_WIDTH * LANE_COUNT * 0.9, 0, 5, canvas.height);
-        ctx.shadowBlur = 0;
-
-        // Simple background buildings/horizon
-        ctx.fillStyle = "#2a2a2a";
-        ctx.fillRect(0, canvas.height - 100, canvas.width, 100);
-        ctx.fillStyle = "#1a1a1a";
-        for (let i = 0; i < 10; i++) {
-          ctx.fillRect(
-            Math.random() * canvas.width,
-            canvas.height - 100 - Math.random() * 80,
-            20 + Math.random() * 30,
-            20 + Math.random() * 80
-          );
-        }
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
 
       // --- Enemy Management ---
-
-      function createEnemies(initialCount) {
+      function createEnemies(initialRows) {
         enemies = [];
-        for (let i = 0; i < initialCount; i++) {
-          spawnNewEnemyRow(i * ENEMY_SPAWN_GAP * 1.5 + ENEMY_HEIGHT * 2);
+        for (let i = 0; i < initialRows; i++) {
+          spawnNewEnemyRow(-(ENEMY_SPAWN_GAP * (initialRows - i)));
         }
       }
 
-      function spawnNewEnemyRow(currentY) {
-        const emptyLane = Math.floor(Math.random() * LANE_COUNT);
-        const lanesToBlock = [];
-        for (let i = 0; i < LANE_COUNT; i++) {
-          if (i !== emptyLane) {
-            lanesToBlock.push(i);
-          }
+      function spawnNewEnemyRow(currentY = -ENEMY_HEIGHT) {
+        const numberOfEnemies = Math.random() < 0.7 ? 1 : 2;
+        let occupiedLanes = [];
+        if (numberOfEnemies === 1) {
+          let lane;
+          do {
+            lane = Math.floor(Math.random() * LANE_COUNT);
+          } while (lane === player.lane && Math.random() < 0.3);
+          occupiedLanes.push(lane);
+        } else {
+          let lane1 = Math.floor(Math.random() * LANE_COUNT);
+          let lane2;
+          do {
+            lane2 = Math.floor(Math.random() * LANE_COUNT);
+          } while (lane1 === lane2);
+          occupiedLanes.push(lane1, lane2);
         }
-
-        const numberOfEnemies = Math.random() < 0.6 ? 1 : 2; // 60% tạo 1 xe, 40% tạo 2 xe
-        const lanesToUse = [];
-
-        // Chọn ngẫu nhiên 'numberOfEnemies' làn từ 'lanesToBlock'
-        while (lanesToUse.length < numberOfEnemies && lanesToBlock.length > 0) {
-          const randomIndex = Math.floor(Math.random() * lanesToBlock.length);
-          lanesToUse.push(lanesToBlock.splice(randomIndex, 1)[0]);
-        }
-
-        lanesToUse.forEach((lane) => {
+        occupiedLanes.forEach((lane) => {
           enemies.push({
             lane: lane,
             width: ENEMY_WIDTH,
             height: ENEMY_HEIGHT,
-            x: LANE_CENTERS.at(lane) - ENEMY_WIDTH / 2,
-            y: -currentY,
+            x: LANE_CENTERS[lane] - ENEMY_WIDTH / 2,
+            y: currentY,
           });
         });
       }
 
       function moveEnemies() {
         const enemiesToKeep = [];
-        let newEnemiesToAddCount = 0;
-        let highestEnemyY = canvas.height;
-        if (enemies.length > 0) {
-          highestEnemyY = Math.min(...enemies.map((e) => e.y));
-        }
+        let enemiesPassedThisFrame = 0;
 
         for (let i = 0; i < enemies.length; i++) {
-          const enemy = enemies.at(i);
+          const enemy = enemies[i];
           enemy.y += gameSpeed;
 
-          if (enemy.y > canvas.height + enemy.height) {
-            score++;
-            gameSpeed += 0.005;
-            if (enemy.y - ENEMY_HEIGHT * 1.5 > highestEnemyY) {
-              newEnemiesToAddCount++;
-            }
+          if (enemy.y > canvas.height) {
+            enemiesPassedThisFrame++;
           } else {
             enemiesToKeep.push(enemy);
           }
         }
         enemies = enemiesToKeep;
+        score += enemiesPassedThisFrame;
 
-        for (let i = 0; i < newEnemiesToAddCount; i++) {
-          spawnNewEnemyRow(canvas.height + ENEMY_SPAWN_GAP * (i + 1));
+        let highestEnemyY = canvas.height;
+        if (enemies.length > 0) {
+          highestEnemyY = Math.min(...enemies.map((e) => e.y));
+        }
+
+        if (highestEnemyY > ENEMY_SPAWN_GAP || enemies.length === 0) {
+          if (enemies.length < LANE_COUNT * 2) {
+            spawnNewEnemyRow(-ENEMY_HEIGHT);
+          }
         }
       }
 
@@ -402,56 +353,81 @@
       }
 
       // --- Input Handling (Unified) ---
-
+      let isSwiping = false;
       function changePlayerLane(direction) {
-        if (direction === "left" && player.lane > 0) {
-          player.lane--;
-          player.x = LANE_CENTERS.at(player.lane) - PLAYER_WIDTH / 2;
-        } else if (direction === "right" && player.lane < LANE_COUNT - 1) {
+        if (!gameRunning) return;
+        if (direction === "left" && player.lane > 0) player.lane--;
+        else if (direction === "right" && player.lane < LANE_COUNT - 1)
           player.lane++;
-          player.x = LANE_CENTERS.at(player.lane) - PLAYER_WIDTH / 2;
-        }
+        player.x = LANE_CENTERS[player.lane] - PLAYER_WIDTH / 2;
       }
 
       window.addEventListener("keydown", (e) => {
-        if (e.key === "ArrowLeft") {
-          changePlayerLane("left");
-        } else if (e.key === "ArrowRight") {
-          changePlayerLane("right");
+        if (!gameRunning && e.key !== "Enter" && e.key !== " ") return;
+        if (e.key === "ArrowLeft") changePlayerLane("left");
+        else if (e.key === "ArrowRight") changePlayerLane("right");
+        else if (
+          (e.key === "Enter" || e.key === " ") &&
+          !gameRunning &&
+          gameOverScreen.style.display === "block"
+        ) {
+          startGame();
         }
       });
 
       let touchStartX = 0;
-      const SWIPE_THRESHOLD = 30;
+      const SWIPE_THRESHOLD = 50;
+      canvas.addEventListener(
+        "touchstart",
+        (e) => {
+          if (!gameRunning && gameOverScreen.style.display === "block") return;
+          e.preventDefault();
+          if (e.touches.length === 1) {
+            touchStartX = e.touches[0].clientX;
+            isSwiping = true;
+          }
+        },
+        { passive: false }
+      );
 
-      canvas.addEventListener("touchstart", (e) => {
-        e.preventDefault();
-        if (e.touches.length === 1) {
-          touchStartX = e.touches.at(0).screenX;
-        }
-      });
+      canvas.addEventListener(
+        "touchmove",
+        (e) => {
+          if (!isSwiping || !gameRunning) return;
+          e.preventDefault();
+          if (e.touches.length === 1) {
+            const touchCurrentX = e.touches[0].clientX;
+            const diffX = touchCurrentX - touchStartX;
+            if (Math.abs(diffX) > SWIPE_THRESHOLD) {
+              changePlayerLane(diffX < 0 ? "left" : "right");
+              isSwiping = false;
+            }
+          }
+        },
+        { passive: false }
+      );
 
       canvas.addEventListener("touchend", (e) => {
-        if (e.changedTouches.length === 1) {
-          const touchEndX = e.changedTouches.at(0).screenX;
-          if (touchEndX < touchStartX - SWIPE_THRESHOLD) {
-            changePlayerLane("left");
-          } else if (touchEndX > touchStartX + SWIPE_THRESHOLD) {
-            changePlayerLane("right");
-          }
-        }
+        if (e.changedTouches.length === 1) isSwiping = false;
       });
 
       // --- Game Loop and Control ---
-
       function clearCanvas() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
 
-      function gameLoop() {
+      let lastFrameTime = 0;
+      function gameLoop(currentTime) {
         if (!gameRunning) {
           cancelAnimationFrame(animationFrameId);
           return;
+        }
+        if (!lastFrameTime) lastFrameTime = currentTime;
+
+        if (gameSpeed < MAX_GAME_SPEED) {
+          gameSpeed += SPEED_ACCELERATION;
+        } else {
+          gameSpeed = MAX_GAME_SPEED;
         }
 
         clearCanvas();
@@ -469,19 +445,22 @@
           return;
         }
 
+        lastFrameTime = currentTime;
         animationFrameId = requestAnimationFrame(gameLoop);
       }
 
       function startGame() {
         score = 0;
-        gameSpeed = 6;
+        gameSpeed = INITIAL_GAME_SPEED;
         player.lane = 1;
-        player.x = LANE_CENTERS.at(player.lane) - PLAYER_WIDTH / 2;
+        player.x = LANE_CENTERS[player.lane] - PLAYER_WIDTH / 2;
         initRoadLines();
-        createEnemies(3); // Bắt đầu với 3 "hàng" kẻ thù ban đầu
+        createEnemies(2);
         gameOverScreen.style.display = "none";
         scoreDiv.style.display = "block";
+        canvas.style.opacity = "1";
         gameRunning = true;
+        lastFrameTime = 0;
         animationFrameId = requestAnimationFrame(gameLoop);
       }
 
@@ -489,15 +468,25 @@
         gameRunning = false;
         cancelAnimationFrame(animationFrameId);
         gameOverScreen.style.display = "block";
-        scoreDiv.style.display = "none";
+        document.getElementById(
+          "gameOverScreen"
+        ).innerHTML = `GAME OVER<br/>Score: ${score}<br/><button id="restartBtn">Restart</button>`;
+        document
+          .getElementById("restartBtn")
+          .addEventListener("click", startGame);
+        canvas.style.opacity = "0.7";
       }
 
-      restartBtn.addEventListener("click", () => {
-        startGame();
-      });
+      restartBtn.addEventListener("click", startGame);
 
-      // Initial game start
-      startGame();
+      function initializeGame() {
+        drawRoad();
+        drawRoadLines();
+        drawPlayer();
+        startGame();
+      }
+
+      initializeGame();
     </script>
   </body>
 </html>
